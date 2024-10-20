@@ -983,7 +983,7 @@ void DimOp::getCanonicalizationPatterns(mlir::RewritePatternSet &patterns,
     auto assertOp1 = builder.create<AssertOp>(
         loc,
         builder.getStringAttr(
-          "size_of_dimension_base_array failed (ndims out of bounds)"),
+          "size_of_dimension_base_array failed (ndims out of bounds)\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard1(builder);
@@ -4722,7 +4722,7 @@ DivOp::distributeDivOp(llvm::SmallVectorImpl<mlir::Value> &results,
     auto assertOp = builder.create<AssertOp>(
         loc,
         builder.getStringAttr(
-          "Model error: division by 0"),
+          "Model error: division by 0\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard(builder);
@@ -6243,7 +6243,7 @@ mlir::OpFoldResult AcosOp::fold(FoldAdaptor adaptor) {
     auto assertOp1 = builder.create<AssertOp>(
         loc, 
         builder.getStringAttr(
-          "Model error: Argument of acos outside the domain. It should be -1 <= arg <= 1"),
+          "Model error: Argument of acos outside the domain. It should be -1 <= arg <= 1\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard1(builder);
@@ -6318,7 +6318,7 @@ mlir::OpFoldResult AsinOp::fold(FoldAdaptor adaptor) {
     auto assertOp1 = builder.create<AssertOp>(
         loc, 
         builder.getStringAttr(
-          "Model error: Argument of asin outside the domain. It should be -1 <= arg <= 1"),
+          "Model error: Argument of asin outside the domain. It should be -1 <= arg <= 1\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard1(builder);
@@ -6524,7 +6524,7 @@ mlir::OpFoldResult DivTruncOp::fold(FoldAdaptor adaptor) {
     auto assertOp = builder.create<AssertOp>(
         loc,
         builder.getStringAttr(
-          "Model error: division by 0"),
+          "Model error: division by 0\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard(builder);
@@ -6670,7 +6670,7 @@ mlir::OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
     auto assertOp = builder.create<AssertOp>(
         loc,
         builder.getStringAttr(
-          "Model error: Argument of log outside the domain. It should be > 0"),
+          "Model error: Argument of log outside the domain. It should be > 0\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard(builder);
@@ -6726,7 +6726,7 @@ mlir::OpFoldResult Log10Op::fold(FoldAdaptor adaptor) {
     auto assertOp = builder.create<AssertOp>(
         loc,
         builder.getStringAttr(
-          "Model error: Argument of log10 outside the domain. It should be > 0"),
+          "Model error: Argument of log10 outside the domain. It should be > 0\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard(builder);
@@ -7413,7 +7413,7 @@ mlir::OpFoldResult SqrtOp::fold(FoldAdaptor adaptor) {
     auto assertOp = builder.create<AssertOp>(
         loc,
         builder.getStringAttr(
-          "Model error: Argument of sqrt outside the domain. It should be >= 0"),
+          "Model error: Argument of sqrt outside the domain. It should be >= 0\n"),
         builder.getI64IntegerAttr(2));
     
     mlir::OpBuilder::InsertionGuard guard(builder);
