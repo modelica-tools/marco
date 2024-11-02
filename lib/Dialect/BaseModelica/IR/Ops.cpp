@@ -7667,7 +7667,7 @@ mlir::OpFoldResult TanOp::fold(FoldAdaptor adaptor) {
     auto assertOp = builder.create<AssertOp>(
         loc,
         builder.getStringAttr(
-          "Model error: Argument of tan is invalid. It should be != k*(PI/2)\n"),
+          "Model error: Argument of tan is invalid. It should not be multiple of pi/2\n"),
         builder.getI64IntegerAttr(2));
 
     mlir::OpBuilder::InsertionGuard guard(builder);
