@@ -1,8 +1,8 @@
 #include "marco/Dialect/BaseModelica/Transforms/EquationExplicitation.h"
 #include "marco/Dialect/BaseModelica/Analysis/VariableAccessAnalysis.h"
 #include "marco/Dialect/BaseModelica/IR/BaseModelica.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir::bmodelica {
@@ -69,8 +69,7 @@ private:
                          mlir::ModuleOp moduleOp, ModelOp modelOp,
                          StartEquationInstanceOp equation,
                          llvm::SmallVectorImpl<uint64_t> &lowerBounds,
-                         llvm::SmallVectorImpl<uint64_t> &upperBounds,
-                         llvm::SmallVectorImpl<uint64_t> &steps);
+                         llvm::SmallVectorImpl<uint64_t> &upperBounds);
 
   EquationFunctionOp
   createEquationFunction(mlir::RewriterBase &rewriter,
@@ -78,11 +77,10 @@ private:
                          mlir::ModuleOp moduleOp, ModelOp modelOp,
                          ScheduledEquationInstanceOp equation,
                          llvm::SmallVectorImpl<uint64_t> &lowerBounds,
-                         llvm::SmallVectorImpl<uint64_t> &upperBounds,
-                         llvm::SmallVectorImpl<uint64_t> &steps);
+                         llvm::SmallVectorImpl<uint64_t> &upperBounds);
 
   void shiftInductions(llvm::SmallVectorImpl<mlir::Value> &shiftedInductions,
-                       mlir::RewriterBase &rewriter,
+                       mlir::OpBuilder &builder,
                        mlir::ArrayAttr iterationDirections,
                        const MultidimensionalRange &indices,
                        mlir::ValueRange loopInductions);
@@ -239,11 +237,10 @@ mlir::LogicalResult EquationExplicitationPass::processStartEquation(
     ModelOp modelOp, StartEquationInstanceOp equation) {
   llvm::SmallVector<uint64_t, 10> lowerBounds;
   llvm::SmallVector<uint64_t, 10> upperBounds;
-  llvm::SmallVector<uint64_t, 10> steps;
 
   EquationFunctionOp eqFunc =
       createEquationFunction(rewriter, symbolTableCollection, moduleOp, modelOp,
-                             equation, lowerBounds, upperBounds, steps);
+                             equation, lowerBounds, upperBounds);
 
   if (!eqFunc) {
     return mlir::failure();
@@ -269,8 +266,6 @@ mlir::LogicalResult EquationExplicitationPass::processStartEquation(
   for (size_t i = 0, e = equation.getInductionVariables().size(); i < e; ++i) {
     ranges.push_back(Range(static_cast<Point::data_type>(lowerBounds[i]),
                            static_cast<Point::data_type>(upperBounds[i])));
-
-    assert(steps[i] == 1);
   }
 
   auto callOp = rewriter.create<EquationCallOp>(
@@ -320,11 +315,10 @@ mlir::LogicalResult EquationExplicitationPass::processSCC(
     if (explicitEquation) {
       llvm::SmallVector<uint64_t, 10> lowerBounds;
       llvm::SmallVector<uint64_t, 10> upperBounds;
-      llvm::SmallVector<uint64_t, 10> steps;
 
       EquationFunctionOp eqFunc = createEquationFunction(
           rewriter, symbolTableCollection, moduleOp, modelOp, explicitEquation,
-          lowerBounds, upperBounds, steps);
+          lowerBounds, upperBounds);
 
       if (!eqFunc) {
         return mlir::failure();
@@ -351,8 +345,6 @@ mlir::LogicalResult EquationExplicitationPass::processSCC(
            ++i) {
         ranges.push_back(Range(static_cast<Point::data_type>(lowerBounds[i]),
                                static_cast<Point::data_type>(upperBounds[i])));
-
-        assert(steps[i] == 1);
       }
 
       auto iterationDirections = equation.getIterationDirections();
@@ -392,8 +384,7 @@ EquationFunctionOp EquationExplicitationPass::createEquationFunction(
     mlir::SymbolTableCollection &symbolTableCollection, mlir::ModuleOp moduleOp,
     ModelOp modelOp, StartEquationInstanceOp equation,
     llvm::SmallVectorImpl<uint64_t> &lowerBounds,
-    llvm::SmallVectorImpl<uint64_t> &upperBounds,
-    llvm::SmallVectorImpl<uint64_t> &steps) {
+    llvm::SmallVectorImpl<uint64_t> &upperBounds) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPointToEnd(moduleOp.getBody());
 
@@ -412,7 +403,6 @@ EquationFunctionOp EquationExplicitationPass::createEquationFunction(
 
     for (size_t i = 0; i < rank; ++i) {
       lowerBounds.push_back(0);
-      steps.push_back(1);
 
       auto upperBound = indicesAttr->getValue()[i].getEnd() -
                         indicesAttr->getValue()[i].getBegin();
@@ -422,13 +412,11 @@ EquationFunctionOp EquationExplicitationPass::createEquationFunction(
 
     llvm::SmallVector<mlir::Value> inductions;
 
-    mlir::Value oneValue = rewriter.create<mlir::arith::ConstantOp>(
-        equation.getLoc(), rewriter.getIndexAttr(1));
-
     for (size_t i = 0; i < rank; ++i) {
-      auto forOp = rewriter.create<mlir::scf::ForOp>(
-          equation.getLoc(), eqFunc.getLowerBound(i), eqFunc.getUpperBound(i),
-          oneValue);
+      auto forOp = rewriter.create<mlir::affine::AffineForOp>(
+          equation.getLoc(), eqFunc.getLowerBound(i),
+          rewriter.getMultiDimIdentityMap(1), eqFunc.getUpperBound(i),
+          rewriter.getMultiDimIdentityMap(1));
 
       inductions.push_back(forOp.getInductionVar());
       rewriter.setInsertionPointToStart(forOp.getBody());
@@ -468,8 +456,7 @@ EquationFunctionOp EquationExplicitationPass::createEquationFunction(
     mlir::SymbolTableCollection &symbolTableCollection, mlir::ModuleOp moduleOp,
     ModelOp modelOp, ScheduledEquationInstanceOp equation,
     llvm::SmallVectorImpl<uint64_t> &lowerBounds,
-    llvm::SmallVectorImpl<uint64_t> &upperBounds,
-    llvm::SmallVectorImpl<uint64_t> &steps) {
+    llvm::SmallVectorImpl<uint64_t> &upperBounds) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPointToEnd(moduleOp.getBody());
 
@@ -492,8 +479,6 @@ EquationFunctionOp EquationExplicitationPass::createEquationFunction(
           iterationDirections[i].cast<EquationScheduleDirectionAttr>();
 
       lowerBounds.push_back(0);
-      steps.push_back(1);
-
       auto iterationDirection = iterationDirectionAttr.getValue();
 
       if (iterationDirection == EquationScheduleDirection::Any ||
@@ -514,13 +499,11 @@ EquationFunctionOp EquationExplicitationPass::createEquationFunction(
 
     llvm::SmallVector<mlir::Value> inductions;
 
-    mlir::Value oneValue = rewriter.create<mlir::arith::ConstantOp>(
-        equation.getLoc(), rewriter.getIndexAttr(1));
-
     for (size_t i = 0; i < rank; ++i) {
-      auto forOp = rewriter.create<mlir::scf::ForOp>(
-          equation.getLoc(), eqFunc.getLowerBound(i), eqFunc.getUpperBound(i),
-          oneValue);
+      auto forOp = rewriter.create<mlir::affine::AffineForOp>(
+          equation.getLoc(), eqFunc.getLowerBound(i),
+          rewriter.getMultiDimIdentityMap(1), eqFunc.getUpperBound(i),
+          rewriter.getMultiDimIdentityMap(1));
 
       inductions.push_back(forOp.getInductionVar());
       rewriter.setInsertionPointToStart(forOp.getBody());
@@ -552,13 +535,13 @@ EquationFunctionOp EquationExplicitationPass::createEquationFunction(
 
 void EquationExplicitationPass::shiftInductions(
     llvm::SmallVectorImpl<mlir::Value> &shiftedInductions,
-    mlir::RewriterBase &rewriter, mlir::ArrayAttr iterationDirections,
+    mlir::OpBuilder &builder, mlir::ArrayAttr iterationDirections,
     const MultidimensionalRange &indices, mlir::ValueRange loopInductions) {
   for (size_t i = 0, e = indices.rank(); i < e; ++i) {
     mlir::Value induction = loopInductions[i];
 
-    mlir::Value fromValue = rewriter.create<mlir::arith::ConstantOp>(
-        induction.getLoc(), rewriter.getIndexAttr(indices[i].getBegin()));
+    mlir::Value fromValue = builder.create<ConstantOp>(
+        induction.getLoc(), builder.getIndexAttr(indices[i].getBegin()));
 
     auto iterationDirectionAttr =
         iterationDirections[i].cast<EquationScheduleDirectionAttr>();
@@ -567,14 +550,14 @@ void EquationExplicitationPass::shiftInductions(
 
     if (iterationDirection == EquationScheduleDirection::Any ||
         iterationDirection == EquationScheduleDirection::Forward) {
-      mlir::Value mappedInduction = rewriter.create<mlir::arith::AddIOp>(
-          induction.getLoc(), rewriter.getIndexType(), fromValue, induction);
+      mlir::Value mappedInduction = builder.create<AddOp>(
+          induction.getLoc(), builder.getIndexType(), fromValue, induction);
 
       shiftedInductions.push_back(mappedInduction);
     } else {
       assert(iterationDirection == EquationScheduleDirection::Backward);
-      mlir::Value mappedInduction = rewriter.create<mlir::arith::SubIOp>(
-          induction.getLoc(), rewriter.getIndexType(), fromValue, induction);
+      mlir::Value mappedInduction = builder.create<SubOp>(
+          induction.getLoc(), builder.getIndexType(), fromValue, induction);
 
       shiftedInductions.push_back(mappedInduction);
     }
