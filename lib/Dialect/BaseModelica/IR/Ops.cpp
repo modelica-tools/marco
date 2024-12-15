@@ -761,79 +761,80 @@ void TensorExtractOp::getCanonicalizationPatterns(
   patterns.add<MergeTensorViewIntoTensorExtractPattern>(context);
 }
 
-  void TensorExtractOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    int64_t rank = getTensor().getType().getRank();
-    auto tensorShapedType = getTensor().getType().dyn_cast<mlir::ShapedType>();
-    mlir::ValueRange indices = getIndices();
+void TensorExtractOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value operand = getTensor();
+  auto tensorShapedType = operand.getType().dyn_cast<mlir::ShapedType>();
+  mlir::ValueRange indices = getIndices();
 
-    for(int64_t i = 0; i < rank; i++) {
-      //take the i-th index
-      auto index = *(indices.begin()+i);
+  int64_t rank = getTensor().getType().getRank();
+  for(int64_t i = 0; i < rank; i++) {
+    //take the i-th index
+    auto index = *(indices.begin()+i);
 
-      //take the dimension
-      if(int64_t dim = tensorShapedType.getDimSize(i);
-         dim != LONG_MIN) {
-        mlir::Value dimConst = builder.create<ConstantOp>(
-            loc, IntegerAttr::get(builder.getContext(), dim));
-        
-        auto assertOp = builder.create<AssertOp>(
-            loc,
-            builder.getStringAttr(
-              "Model error: Index out of bound\n"),
-            builder.getI64IntegerAttr(2));
-        
-        mlir::OpBuilder::InsertionGuard guard(builder);
-        builder.createBlock(&assertOp.getConditionRegion());
+    //take the dimension
+    mlir::Value idx = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), i));
+    mlir::Value dim = builder.create<SizeOp>(
+        loc, IntegerType::get(builder.getContext()), operand, idx);
+    
+    auto assertOp = builder.create<AssertOp>(
+        loc,
+        builder.getStringAttr(
+          "Model error: Index out of bound\n"),
+        builder.getI64IntegerAttr(2));
+    
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.createBlock(&assertOp.getConditionRegion());
 
-        mlir::Value condition = builder.create<LtOp>(
-            loc, index, dimConst);
-        
-        builder.create<YieldOp>(assertOp.getLoc(), condition);
-      }
-    }
+    mlir::Value condition = builder.create<LtOp>(
+        loc, index, dim);
+      
+      builder.create<YieldOp>(assertOp.getLoc(), condition);
   }
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
 // TensorInsertOp
+
 namespace mlir::bmodelica
 {
-  void TensorInsertOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    int64_t rank = getDestination().getType().getRank();
-    auto tensorShapedType = getDestination().getType().dyn_cast<mlir::ShapedType>();
-    mlir::ValueRange indices = getIndices();
+void TensorInsertOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  int64_t rank = getDestination().getType().getRank();
+  auto tensorShapedType = getDestination().getType().dyn_cast<mlir::ShapedType>();
+  mlir::ValueRange indices = getIndices();
 
-    for(int64_t i = 0; i < rank; i++) {
-      //take the i-th index
-      auto index = *(indices.begin()+i);
+  for(int64_t i = 0; i < rank; i++) {
+    //take the i-th index
+    auto index = *(indices.begin()+i);
+    
+    //take the dimension
+    if(int64_t dim = tensorShapedType.getDimSize(i);
+        dim != LONG_MIN) {
+      mlir::Value dimConst = builder.create<ConstantOp>(
+          loc, IntegerAttr::get(builder.getContext(), dim));
       
-      //take the dimension
-      if(int64_t dim = tensorShapedType.getDimSize(i);
-         dim != LONG_MIN) {
-        mlir::Value dimConst = builder.create<ConstantOp>(
-            loc, IntegerAttr::get(builder.getContext(), dim));
-        
-        auto assertOp = builder.create<AssertOp>(
-            loc,
-            builder.getStringAttr(
-              "Model error: Index out of bound\n"),
-            builder.getI64IntegerAttr(2));
-        
-        mlir::OpBuilder::InsertionGuard guard(builder);
-        builder.createBlock(&assertOp.getConditionRegion());
+      auto assertOp = builder.create<AssertOp>(
+          loc,
+          builder.getStringAttr(
+            "Model error: Index out of bound\n"),
+          builder.getI64IntegerAttr(2));
+      
+      mlir::OpBuilder::InsertionGuard guard(builder);
+      builder.createBlock(&assertOp.getConditionRegion());
 
-        mlir::Value condition = builder.create<LtOp>(
-            loc, index, dimConst);
-        
-        builder.create<YieldOp>(assertOp.getLoc(), condition);
-      }
+      mlir::Value condition = builder.create<LtOp>(
+          loc, index, dimConst);
+      
+      builder.create<YieldOp>(assertOp.getLoc(), condition);
     }
   }
 }
+} // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
 // Array operations
@@ -1040,39 +1041,39 @@ void DimOp::getCanonicalizationPatterns(mlir::RewritePatternSet &patterns,
   patterns.add<DimOpStaticDimensionPattern>(context);
 }
 
-  void DimOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value dim = getDimension();
-    auto arrayShapedType = getArray().getType().dyn_cast<mlir::ShapedType>();
-    int64_t rank = arrayShapedType.getRank();
+void DimOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value dim = getDimension();
+  auto arrayShapedType = getArray().getType().dyn_cast<mlir::ShapedType>();
+  int64_t rank = arrayShapedType.getRank();
 
-    mlir::Value zero = builder.create<ConstantOp>(
-        loc, IntegerAttr::get(builder.getContext(), 0));
+  mlir::Value zero = builder.create<ConstantOp>(
+      loc, IntegerAttr::get(builder.getContext(), 0));
 
-    mlir::Value rankConst = builder.create<ConstantOp>(
-        loc, IntegerAttr::get(builder.getContext(), rank));
+  mlir::Value rankConst = builder.create<ConstantOp>(
+      loc, IntegerAttr::get(builder.getContext(), rank));
 
-    mlir::Value cond1 = builder.create<GteOp>(
-        loc, dim, zero);
+  mlir::Value cond1 = builder.create<GteOp>(
+      loc, dim, zero);
 
-    mlir::Value cond2 = builder.create<LtOp>(
-        loc, dim, rankConst);
+  mlir::Value cond2 = builder.create<LtOp>(
+      loc, dim, rankConst);
 
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: ndims out of bounds\n"),
-        builder.getI64IntegerAttr(2));
-            
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
-    
-    mlir::Value condition = builder.create<AndOp>(
-      loc, cond1, cond2);
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: ndims out of bounds\n"),
+      builder.getI64IntegerAttr(2));
+          
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+  
+  mlir::Value condition = builder.create<AndOp>(
+    loc, cond1, cond2);
 
-    builder.create<YieldOp>(loc, condition);
-  }
+  builder.create<YieldOp>(loc, condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -1204,63 +1205,63 @@ void LoadOp::getEffects(mlir::SmallVectorImpl<mlir::SideEffects::EffectInstance<
                        mlir::SideEffects::DefaultResource::get());
 }
   
-  void LoadOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::ValueRange indices = getIndices();
+void LoadOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::ValueRange indices = getIndices();
 
-    // This operation is also used to load scalar variables
-    // so check how many indices we have.
-    if(indices.size() > 0) {
-      // Modelica arrays will eventually be converted to MLIR tensors
-      // at some point down the pipeline, so convert everything
-      // to tensor to avoid issues
-      mlir::Value operand;
-      if(getArrayType().isa<ArrayType>()) {
-        auto operandShapedType = operand.getType().dyn_cast<mlir::ShapedType>();
-        auto operandTensorType = mlir::RankedTensorType::get(
-                  operandShapedType.getShape(),
-                  operandShapedType.getElementType());
-        operand = builder.create<ArrayToTensorOp>(loc,
-            operandTensorType, operand);
-      } else {
-        operand = getArray();
-      }
+  // This operation is also used to load scalar variables
+  // so check how many indices we have.
+  if(indices.size() > 0) {
+    // Modelica arrays will eventually be converted to MLIR tensors
+    // at some point down the pipeline, so convert everything
+    // to tensor to avoid issues
+    mlir::Value operand;
+    if(getArrayType().isa<ArrayType>()) {
+      auto operandShapedType = operand.getType().dyn_cast<mlir::ShapedType>();
+      auto operandTensorType = mlir::RankedTensorType::get(
+                operandShapedType.getShape(),
+                operandShapedType.getElementType());
+      operand = builder.create<ArrayToTensorOp>(loc,
+          operandTensorType, operand);
+    } else {
+      operand = getArray();
+    }
 
-      mlir::Value zero = builder.create<ConstantOp>(
-          loc, IntegerAttr::get(builder.getContext(), 0));
-      
-      uint64_t rank = getArrayType().getRank();
-      for(uint64_t i = 0; i < rank; i++) {
-        // take the i-th index
-        auto index = *(indices.begin()+i);
+    mlir::Value zero = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), 0));
+    
+    uint64_t rank = getArrayType().getRank();
+    for(uint64_t i = 0; i < rank; i++) {
+      // take the i-th index
+      auto index = *(indices.begin()+i);
 
-        mlir::Value dimIndex = builder.create<ConstantOp>(
-            loc, builder.getIndexAttr(i));
-        // take the dimension
-        mlir::Value dim = builder.create<SizeOp>(
-            loc, IntegerType::get(builder.getContext()), operand, dimIndex);
+      mlir::Value dimIndex = builder.create<ConstantOp>(
+          loc, builder.getIndexAttr(i));
+      // take the dimension
+      mlir::Value dim = builder.create<SizeOp>(
+          loc, IntegerType::get(builder.getContext()), operand, dimIndex);
 
-        auto assertOp = builder.create<AssertOp>(
-            loc,
-            builder.getStringAttr(
-              "Model error: Index out of bounds\n"),
-            builder.getI64IntegerAttr(2));
-            
-        mlir::OpBuilder::InsertionGuard guard(builder);
-        builder.createBlock(&assertOp.getConditionRegion());
+      auto assertOp = builder.create<AssertOp>(
+          loc,
+          builder.getStringAttr(
+            "Model error: Index out of bounds\n"),
+          builder.getI64IntegerAttr(2));
           
-        mlir::Value cond1 = builder.create<GteOp>(
-            loc, index, zero); 
-        mlir::Value cond2 = builder.create<LtOp>(
-            loc, index, dim);
-        mlir::Value condition = builder.create<AndOp>(
-          loc, cond1, cond2);
+      mlir::OpBuilder::InsertionGuard guard(builder);
+      builder.createBlock(&assertOp.getConditionRegion());
+        
+      mlir::Value cond1 = builder.create<GteOp>(
+          loc, index, zero); 
+      mlir::Value cond2 = builder.create<LtOp>(
+          loc, index, dim);
+      mlir::Value condition = builder.create<AndOp>(
+        loc, cond1, cond2);
 
-        builder.create<YieldOp>(assertOp.getLoc(), condition);
-      }
+      builder.create<YieldOp>(assertOp.getLoc(), condition);
     }
   }
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -1357,63 +1358,63 @@ void StoreOp::getEffects(
                        mlir::SideEffects::DefaultResource::get());
 }
   
-  void StoreOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::ValueRange indices = getIndices();
-    
-    // This operation is also used to store scalar variables
-    // so check how many indices we have.
-    if(indices.size() > 0) {
-      // Modelica arrays will eventually be converted to MLIR tensors
-      // at some point down the pipeline, so convert everything
-      // to tensor to avoid issues
-      mlir::Value operand;
-      if(getArrayType().isa<ArrayType>()) {
-        auto operandShapedType = getArrayType().dyn_cast<mlir::ShapedType>();
-        auto operandTensorType = mlir::RankedTensorType::get(
-                  operandShapedType.getShape(),
-                  operandShapedType.getElementType());
-        operand = builder.create<ArrayToTensorOp>(loc,
-            operandTensorType, getArray());
-      } else {
-        operand = getArray();
-      }
+void StoreOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::ValueRange indices = getIndices();
+  
+  // This operation is also used to store scalar variables
+  // so check how many indices we have.
+  if(indices.size() > 0) {
+    // Modelica arrays will eventually be converted to MLIR tensors
+    // at some point down the pipeline, so convert everything
+    // to tensor to avoid issues
+    mlir::Value operand;
+    if(getArrayType().isa<ArrayType>()) {
+      auto operandShapedType = getArrayType().dyn_cast<mlir::ShapedType>();
+      auto operandTensorType = mlir::RankedTensorType::get(
+                operandShapedType.getShape(),
+                operandShapedType.getElementType());
+      operand = builder.create<ArrayToTensorOp>(loc,
+          operandTensorType, getArray());
+    } else {
+      operand = getArray();
+    }
 
-      mlir::Value zero = builder.create<ConstantOp>(
-          loc, IntegerAttr::get(builder.getContext(), 0));
+    mlir::Value zero = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), 0));
 
-      uint64_t rank = getArrayType().getRank();
-      for(uint64_t i = 0; i < rank; i++) {
-        // take the i-th index
-        auto index = *(indices.begin()+i);
+    uint64_t rank = getArrayType().getRank();
+    for(uint64_t i = 0; i < rank; i++) {
+      // take the i-th index
+      auto index = *(indices.begin()+i);
 
-        mlir::Value dimIndex = builder.create<ConstantOp>(
-            loc, builder.getIndexAttr(i));
-        // take the dimension
-        mlir::Value dim = builder.create<SizeOp>(
-            loc, IntegerType::get(builder.getContext()), operand, dimIndex);
+      mlir::Value dimIndex = builder.create<ConstantOp>(
+          loc, builder.getIndexAttr(i));
+      // take the dimension
+      mlir::Value dim = builder.create<SizeOp>(
+          loc, IntegerType::get(builder.getContext()), operand, dimIndex);
 
-        auto assertOp = builder.create<AssertOp>(
-            loc,
-            builder.getStringAttr(
-              "Model error: Index out of bounds\n"),
-            builder.getI64IntegerAttr(2));
-            
-        mlir::OpBuilder::InsertionGuard guard(builder);
-        builder.createBlock(&assertOp.getConditionRegion());
+      auto assertOp = builder.create<AssertOp>(
+          loc,
+          builder.getStringAttr(
+            "Model error: Index out of bounds\n"),
+          builder.getI64IntegerAttr(2));
           
-        mlir::Value cond1 = builder.create<GteOp>(
-            loc, index, zero); 
-        mlir::Value cond2 = builder.create<LtOp>(
-            loc, index, dim);
-        mlir::Value condition = builder.create<AndOp>(
-          loc, cond1, cond2);
+      mlir::OpBuilder::InsertionGuard guard(builder);
+      builder.createBlock(&assertOp.getConditionRegion());
+        
+      mlir::Value cond1 = builder.create<GteOp>(
+          loc, index, zero); 
+      mlir::Value cond2 = builder.create<LtOp>(
+          loc, index, dim);
+      mlir::Value condition = builder.create<AndOp>(
+        loc, cond1, cond2);
 
-        builder.create<YieldOp>(assertOp.getLoc(), condition);
-      }
+      builder.create<YieldOp>(assertOp.getLoc(), condition);
     }
   }
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -1550,53 +1551,53 @@ ArrayType SubscriptionOp::inferResultType(ArrayType source,
   return source.withShape(shape);
 }
   
-  void SubscriptionOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    // Modelica arrays will eventually be converted to MLIR tensors
-    // at some point down the pipeline, so convert everything
-    // to tensor to avoid issues
-    auto operandShapedType = getSourceArrayType().dyn_cast<mlir::ShapedType>();
-    auto operandTensorType = mlir::RankedTensorType::get(
-              operandShapedType.getShape(),
-              operandShapedType.getElementType());
-    auto tensorOperand = builder.create<ArrayToTensorOp>(loc,
-        operandTensorType, getSource());
+void SubscriptionOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  // Modelica arrays will eventually be converted to MLIR tensors
+  // at some point down the pipeline, so convert everything
+  // to tensor to avoid issues
+  auto operandShapedType = getSourceArrayType().dyn_cast<mlir::ShapedType>();
+  auto operandTensorType = mlir::RankedTensorType::get(
+            operandShapedType.getShape(),
+            operandShapedType.getElementType());
+  auto tensorOperand = builder.create<ArrayToTensorOp>(loc,
+      operandTensorType, getSource());
 
-    mlir::Value zero = builder.create<ConstantOp>(
-        loc, IntegerAttr::get(builder.getContext(), 0));
+  mlir::Value zero = builder.create<ConstantOp>(
+      loc, IntegerAttr::get(builder.getContext(), 0));
 
-    uint64_t rank = getSourceArrayType().getRank();
-    mlir::ValueRange indices = getIndices();
-    for(uint64_t i = 0; i < rank; i++) {
-      // take the i-th index
-      auto index = *(indices.begin()+i);
+  uint64_t rank = getSourceArrayType().getRank();
+  mlir::ValueRange indices = getIndices();
+  for(uint64_t i = 0; i < rank; i++) {
+    // take the i-th index
+    auto index = *(indices.begin()+i);
 
-      // take the dimension
-      mlir::Value dimIndex = builder.create<ConstantOp>(
-          loc, builder.getIndexAttr(i));
-      mlir::Value dim = builder.create<SizeOp>(
-          loc, IntegerType::get(builder.getContext()), tensorOperand, dimIndex);
+    // take the dimension
+    mlir::Value dimIndex = builder.create<ConstantOp>(
+        loc, builder.getIndexAttr(i));
+    mlir::Value dim = builder.create<SizeOp>(
+        loc, IntegerType::get(builder.getContext()), tensorOperand, dimIndex);
 
-      auto assertOp = builder.create<AssertOp>(
-          loc,
-          builder.getStringAttr(
-            "Model error: Index out of bounds\n"),
-          builder.getI64IntegerAttr(2));
+    auto assertOp = builder.create<AssertOp>(
+        loc,
+        builder.getStringAttr(
+          "Model error: Index out of bounds\n"),
+        builder.getI64IntegerAttr(2));
 
-      mlir::OpBuilder::InsertionGuard guard(builder);
-      builder.createBlock(&assertOp.getConditionRegion());
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.createBlock(&assertOp.getConditionRegion());
 
-      mlir::Value cond1 = builder.create<GteOp>(
-          loc, index, zero); 
-      mlir::Value cond2 = builder.create<LtOp>(
-          loc, index, dim);
-      mlir::Value condition = builder.create<AndOp>(
-        loc, cond1, cond2);
+    mlir::Value cond1 = builder.create<GteOp>(
+        loc, index, zero); 
+    mlir::Value cond2 = builder.create<LtOp>(
+        loc, index, dim);
+    mlir::Value condition = builder.create<AndOp>(
+      loc, cond1, cond2);
 
-      builder.create<YieldOp>(assertOp.getLoc(), condition);
-    }
+    builder.create<YieldOp>(assertOp.getLoc(), condition);
   }
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -4935,45 +4936,45 @@ DivOp::distributeDivOp(llvm::SmallVectorImpl<mlir::Value> &results,
   return mlir::success();
 }
 
-  void DivOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value rhs = getRhs();
-    mlir::Value zero;
-    mlir::Value condition; 
-    
-    bool isIntegerArg = rhs.getType().isa<IntegerType>();
-    if(isIntegerArg) {
-      zero = builder.create<ConstantOp>(
-          loc, IntegerAttr::get(builder.getContext(), 0));
-    } else {
-      zero = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 0.0f));
-    }
-
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: division by 0\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
-
-    if(isIntegerArg) {
-      condition = builder.create<NotEqOp>(
-          loc, rhs, zero);
-    } else {
-      mlir::Value epsilon = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 1E-4));
-      mlir::Value rhsAbs = builder.create<AbsOp>(
-          loc, RealType::get(builder.getContext()), rhs);
-      condition = builder.create<GteOp>(
-          loc, rhsAbs, epsilon);
-    }
-    
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
+void DivOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value rhs = getRhs();
+  mlir::Value zero;
+  mlir::Value condition; 
+  
+  bool isIntegerArg = rhs.getType().isa<IntegerType>();
+  if(isIntegerArg) {
+    zero = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), 0));
+  } else {
+    zero = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 0.0f));
   }
+
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: division by 0\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+
+  if(isIntegerArg) {
+    condition = builder.create<NotEqOp>(
+        loc, rhs, zero);
+  } else {
+    mlir::Value epsilon = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 1E-4));
+    mlir::Value rhsAbs = builder.create<AbsOp>(
+        loc, RealType::get(builder.getContext()), rhs);
+    condition = builder.create<GteOp>(
+        loc, rhsAbs, epsilon);
+  }
+  
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -5288,100 +5289,100 @@ DivEWOp::distributeDivOp(llvm::SmallVectorImpl<mlir::Value> &results,
   return mlir::success();
 }
 
-  void DivEWOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value rhs = getRhs();
-    mlir::Value condition;
-    AssertOp assertOp;
-    mlir::ShapedType rhsShapedType;
-    llvm::SmallVector<mlir::Value> inductionVars;
+void DivEWOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value rhs = getRhs();
+  mlir::Value condition;
+  AssertOp assertOp;
+  mlir::ShapedType rhsShapedType;
+  llvm::SmallVector<mlir::Value> inductionVars;
 
-    bool isRhsScalar = isScalar(rhs.getType());
-    bool isIntegerArg;
-    if(isRhsScalar) {
-      isIntegerArg = rhs.getType().isa<IntegerType>();
-    } else {
-      rhsShapedType = rhs.getType().dyn_cast<mlir::ShapedType>();
-      isIntegerArg = rhsShapedType.getElementType().isa<IntegerType>();
+  bool isRhsScalar = isScalar(rhs.getType());
+  bool isIntegerArg;
+  if(isRhsScalar) {
+    isIntegerArg = rhs.getType().isa<IntegerType>();
+  } else {
+    rhsShapedType = rhs.getType().dyn_cast<mlir::ShapedType>();
+    isIntegerArg = rhsShapedType.getElementType().isa<IntegerType>();
+  }
+
+  mlir::Value zero;
+  if(isIntegerArg)
+    zero = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), 0));
+  else
+    zero = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 0.0f));
+
+  if(!isRhsScalar) {
+    mlir::Value zeroIdx = builder.create<ConstantOp>(
+        loc, builder.getIndexAttr(0));
+    mlir::Value oneIdx = builder.create<ConstantOp>(
+        loc, builder.getIndexAttr(1));
+
+    size_t rank = rhsShapedType.getRank();
+    llvm::SmallVector<mlir::Value, 10> dimSizes;
+    for(size_t i = 0; i < rank; i++) {
+      mlir::Value dimIndex = builder.create<ConstantOp>(
+          loc, builder.getIndexAttr(i));
+      mlir::Value dim = builder.create<SizeOp>(
+          loc, IndexType::get(builder.getContext()), rhs, dimIndex);
+
+      dimSizes.emplace_back(dim);
     }
 
-    mlir::Value zero;
-    if(isIntegerArg)
-      zero = builder.create<ConstantOp>(
-          loc, IntegerAttr::get(builder.getContext(), 0));
-    else
-      zero = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 0.0f));
+    for(size_t i = 0; i < rank; i++) {
+      auto forOp = builder.create<mlir::scf::ForOp>(
+          loc,
+          zeroIdx,
+          dimSizes[i],
+          oneIdx);
+      inductionVars.emplace_back(forOp.getInductionVar());
 
-    if(!isRhsScalar) {
-      mlir::Value zeroIdx = builder.create<ConstantOp>(
-          loc, builder.getIndexAttr(0));
-      mlir::Value oneIdx = builder.create<ConstantOp>(
-          loc, builder.getIndexAttr(1));
-
-      size_t rank = rhsShapedType.getRank();
-      llvm::SmallVector<mlir::Value, 10> dimSizes;
-      for(size_t i = 0; i < rank; i++) {
-        mlir::Value dimIndex = builder.create<ConstantOp>(
-            loc, builder.getIndexAttr(i));
-        mlir::Value dim = builder.create<SizeOp>(
-            loc, IndexType::get(builder.getContext()), rhs, dimIndex);
-
-        dimSizes.emplace_back(dim);
-      }
-
-      for(size_t i = 0; i < rank; i++) {
-        auto forOp = builder.create<mlir::scf::ForOp>(
-            loc,
-            zeroIdx,
-            dimSizes[i],
-            oneIdx);
-        inductionVars.emplace_back(forOp.getInductionVar());
-
-        builder.setInsertionPointToStart(forOp.getBody());
-      }
-    }
-
-    assertOp = builder.create<AssertOp>(
-      loc, 
-      builder.getStringAttr(
-        "Model error: element-wise division by zero\n"),
-      builder.getI64IntegerAttr(2));
-
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
-
-    if(isRhsScalar) {
-      if(isIntegerArg) {
-        condition = builder.create<NotEqOp>(
-            loc, rhs, zero);
-      } else {
-        mlir::Value epsilon = builder.create<ConstantOp>(
-            loc, RealAttr::get(builder.getContext(), 1E-4));
-        mlir::Value rhsAbs = builder.create<AbsOp>(
-            loc, RealType::get(builder.getContext()), rhs);
-        condition = builder.create<GteOp>(
-            loc, rhsAbs, epsilon);
-      }
-      builder.create<YieldOp>(assertOp.getLoc(), condition);
-    } else {
-      auto tensorElem = builder.create<TensorExtractOp>(
-          loc, rhs, inductionVars);
-      if(isIntegerArg) {
-        condition = builder.create<NotEqOp>(
-            loc, tensorElem, zero);
-      } else {
-        mlir::Value epsilon = builder.create<ConstantOp>(
-            loc, RealAttr::get(builder.getContext(), 1E-4));
-        mlir::Value elemAbs = builder.create<AbsOp>(
-            loc, RealType::get(builder.getContext()), tensorElem);
-        condition = builder.create<GteOp>(
-            loc, elemAbs, epsilon);
-      }
-      builder.create<YieldOp>(assertOp.getLoc(), condition);
+      builder.setInsertionPointToStart(forOp.getBody());
     }
   }
+
+  assertOp = builder.create<AssertOp>(
+    loc, 
+    builder.getStringAttr(
+      "Model error: element-wise division by zero\n"),
+    builder.getI64IntegerAttr(2));
+
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+
+  if(isRhsScalar) {
+    if(isIntegerArg) {
+      condition = builder.create<NotEqOp>(
+          loc, rhs, zero);
+    } else {
+      mlir::Value epsilon = builder.create<ConstantOp>(
+          loc, RealAttr::get(builder.getContext(), 1E-4));
+      mlir::Value rhsAbs = builder.create<AbsOp>(
+          loc, RealType::get(builder.getContext()), rhs);
+      condition = builder.create<GteOp>(
+          loc, rhsAbs, epsilon);
+    }
+    builder.create<YieldOp>(assertOp.getLoc(), condition);
+  } else {
+    auto tensorElem = builder.create<TensorExtractOp>(
+        loc, rhs, inductionVars);
+    if(isIntegerArg) {
+      condition = builder.create<NotEqOp>(
+          loc, tensorElem, zero);
+    } else {
+      mlir::Value epsilon = builder.create<ConstantOp>(
+          loc, RealAttr::get(builder.getContext(), 1E-4));
+      mlir::Value elemAbs = builder.create<AbsOp>(
+          loc, RealType::get(builder.getContext()), tensorElem);
+      condition = builder.create<GteOp>(
+          loc, elemAbs, epsilon);
+    }
+    builder.create<YieldOp>(assertOp.getLoc(), condition);
+  }
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -6562,49 +6563,49 @@ mlir::OpFoldResult AcosOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-  void AcosOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value operand = getOperand();
-    mlir::Value argCast = builder.create<CastOp>(
-        loc, RealType::get(builder.getContext()), operand);
+void AcosOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value operand = getOperand();
+  mlir::Value argCast = builder.create<CastOp>(
+      loc, RealType::get(builder.getContext()), operand);
 
-    mlir::Value minusone = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), -1.0f));
+  mlir::Value minusone = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), -1.0f));
 
-    mlir::Value one = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), 1.0f));
+  mlir::Value one = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), 1.0f));
 
-    auto assertOp1 = builder.create<AssertOp>(
-        loc, 
-        builder.getStringAttr(
-          "Model error: Argument of acos outside the domain. It should be -1 <= arg <= 1\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard1(builder);
-    builder.createBlock(&assertOp1.getConditionRegion());
+  auto assertOp1 = builder.create<AssertOp>(
+      loc, 
+      builder.getStringAttr(
+        "Model error: Argument of acos outside the domain. It should be -1 <= arg <= 1\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard1(builder);
+  builder.createBlock(&assertOp1.getConditionRegion());
 
-    mlir::Value firstcondition = builder.create<GteOp>(
-        loc, argCast, minusone);
-    
-    builder.create<YieldOp>(assertOp1.getLoc(), firstcondition);
-    builder.setInsertionPointAfter(assertOp1);
+  mlir::Value firstcondition = builder.create<GteOp>(
+      loc, argCast, minusone);
+  
+  builder.create<YieldOp>(assertOp1.getLoc(), firstcondition);
+  builder.setInsertionPointAfter(assertOp1);
 
-    auto assertOp2 = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: Argument of acos outside the domain. It should be -1 <= arg <= 1"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard2(builder);
-    builder.createBlock(&assertOp2.getConditionRegion());
+  auto assertOp2 = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: Argument of acos outside the domain. It should be -1 <= arg <= 1"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard2(builder);
+  builder.createBlock(&assertOp2.getConditionRegion());
 
-    mlir::Value secondcondition = builder.create<LteOp>(
-        loc, argCast, one);
-    
-    builder.create<YieldOp>(assertOp2.getLoc(), secondcondition);
-  }
+  mlir::Value secondcondition = builder.create<LteOp>(
+      loc, argCast, one);
+  
+  builder.create<YieldOp>(assertOp2.getLoc(), secondcondition);
 }
+} // namespace mlir::bmodelica
 
 
 //===---------------------------------------------------------------------===//
@@ -6636,49 +6637,49 @@ mlir::OpFoldResult AsinOp::fold(FoldAdaptor adaptor) {
 
   return {};
 }
-  void AsinOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value operand = getOperand();
-    // convert operand to arith-compatible type
-    mlir::Value argCast = builder.create<CastOp>(
-        loc, builder.getF64Type(), operand);
+void AsinOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value operand = getOperand();
+  // convert operand to arith-compatible type
+  mlir::Value argCast = builder.create<CastOp>(
+      loc, builder.getF64Type(), operand);
 
-    mlir::Value minusone = builder.create<mlir::arith::ConstantOp>(
-        loc, builder.getF64FloatAttr(-1));
+  mlir::Value minusone = builder.create<mlir::arith::ConstantOp>(
+      loc, builder.getF64FloatAttr(-1));
 
-    mlir::Value one = builder.create<mlir::arith::ConstantOp>(
-        loc, builder.getF64FloatAttr(1));
+  mlir::Value one = builder.create<mlir::arith::ConstantOp>(
+      loc, builder.getF64FloatAttr(1));
+
+  auto assertOp1 = builder.create<AssertOp>(
+      loc, 
+      builder.getStringAttr(
+        "Model error: Argument of asin outside the domain. It should be -1 <= arg <= 1\n"),
+      builder.getI64IntegerAttr(2));
   
-    auto assertOp1 = builder.create<AssertOp>(
-        loc, 
-        builder.getStringAttr(
-          "Model error: Argument of asin outside the domain. It should be -1 <= arg <= 1\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard1(builder);
-    builder.createBlock(&assertOp1.getConditionRegion());
+  mlir::OpBuilder::InsertionGuard guard1(builder);
+  builder.createBlock(&assertOp1.getConditionRegion());
 
-    mlir::Value firstcondition = builder.create<GteOp>(
-        loc, argCast, minusone);
-    
-    builder.create<YieldOp>(assertOp1.getLoc(), firstcondition);
-    builder.setInsertionPointAfter(assertOp1);
+  mlir::Value firstcondition = builder.create<GteOp>(
+      loc, argCast, minusone);
+  
+  builder.create<YieldOp>(assertOp1.getLoc(), firstcondition);
+  builder.setInsertionPointAfter(assertOp1);
 
-    auto assertOp2 = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: Argument of asin outside the domain. It should be -1 <= arg <= 1"),
-        builder.getI64IntegerAttr(2));
-    
-    //mlir::OpBuilder::InsertionGuard guard2(builder);
-    builder.createBlock(&assertOp2.getConditionRegion());
+  auto assertOp2 = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: Argument of asin outside the domain. It should be -1 <= arg <= 1"),
+      builder.getI64IntegerAttr(2));
+  
+  //mlir::OpBuilder::InsertionGuard guard2(builder);
+  builder.createBlock(&assertOp2.getConditionRegion());
 
-    mlir::Value secondcondition = builder.create<LteOp>(
-        loc, argCast, one);
-    
-    builder.create<YieldOp>(assertOp2.getLoc(), secondcondition);
-  }
+  mlir::Value secondcondition = builder.create<LteOp>(
+      loc, argCast, one);
+  
+  builder.create<YieldOp>(assertOp2.getLoc(), secondcondition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -6845,45 +6846,46 @@ mlir::OpFoldResult DivTruncOp::fold(FoldAdaptor adaptor) {
 
   return {};
 }
-  void DivTruncOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value rhs = getY();
-    mlir::Value zero;
-    mlir::Value condition;
 
-    bool isIntegerArg = rhs.getType().isa<IntegerType>();
-    if(isIntegerArg) {
-      zero = builder.create<ConstantOp>(
-          loc, IntegerAttr::get(builder.getContext(), 0));
-    } else {
-      zero = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 0.0f));
-    }
+void DivTruncOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value rhs = getY();
+  mlir::Value zero;
+  mlir::Value condition;
 
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: division by 0\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
-
-    if(isIntegerArg) {
-      condition = builder.create<NotEqOp>(
-          loc, rhs, zero);
-    } else {
-      mlir::Value epsilon = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 1E-4));
-      mlir::Value rhsAbs = builder.create<AbsOp>(
-          loc, RealType::get(builder.getContext()), rhs);
-      condition = builder.create<GteOp>(
-          loc, rhsAbs, epsilon);
-    }
-    
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
+  bool isIntegerArg = rhs.getType().isa<IntegerType>();
+  if(isIntegerArg) {
+    zero = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), 0));
+  } else {
+    zero = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 0.0f));
   }
+
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: division by 0\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+
+  if(isIntegerArg) {
+    condition = builder.create<NotEqOp>(
+        loc, rhs, zero);
+  } else {
+    mlir::Value epsilon = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 1E-4));
+    mlir::Value rhsAbs = builder.create<AbsOp>(
+        loc, RealType::get(builder.getContext()), rhs);
+    condition = builder.create<GteOp>(
+        loc, rhsAbs, epsilon);
+  }
+  
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -7005,30 +7007,30 @@ mlir::OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
   return {};
 }
   
-  void LogOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value operand = getOperand();
-    mlir::Value argCast = builder.create<CastOp>(
-        loc, RealType::get(builder.getContext()), operand);
+void LogOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value operand = getOperand();
+  mlir::Value argCast = builder.create<CastOp>(
+      loc, RealType::get(builder.getContext()), operand);
 
-    mlir::Value zero = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), 0.0f));
+  mlir::Value zero = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), 0.0f));
 
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: Argument of log outside the domain. It should be > 0\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: Argument of log outside the domain. It should be > 0\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
 
-    mlir::Value condition = builder.create<GtOp>(
-        loc, argCast, zero);
-    
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
-  }
+  mlir::Value condition = builder.create<GtOp>(
+      loc, argCast, zero);
+  
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -7060,30 +7062,31 @@ mlir::OpFoldResult Log10Op::fold(FoldAdaptor adaptor) {
 
   return {};
 }
-  void Log10Op::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value operand = getOperand(); 
-    mlir::Value argCast = builder.create<CastOp>(
-        loc, RealType::get(builder.getContext()), operand);
 
-    mlir::Value zero = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), 0.0f));  
+void Log10Op::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value operand = getOperand(); 
+  mlir::Value argCast = builder.create<CastOp>(
+      loc, RealType::get(builder.getContext()), operand);
 
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: Argument of log10 outside the domain. It should be > 0\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
+  mlir::Value zero = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), 0.0f));  
 
-    mlir::Value condition = builder.create<GtOp>(
-        loc, argCast, zero);
-    
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
-  }
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: Argument of log10 outside the domain. It should be > 0\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+
+  mlir::Value condition = builder.create<GtOp>(
+      loc, argCast, zero);
+  
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -7485,45 +7488,45 @@ mlir::OpFoldResult ModOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-  void ModOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value y = getY();
-    mlir::Value zero;
-    mlir::Value condition;
+void ModOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value y = getY();
+  mlir::Value zero;
+  mlir::Value condition;
 
-    bool isIntegerArg = y.getType().isa<IntegerType>();
-    if(isIntegerArg) {
-      zero = builder.create<ConstantOp>(
-          loc, IntegerAttr::get(builder.getContext(), 0));
-    } else {
-      zero = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 0.0f));
-    }
-
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: taking the remainder of a division by 0\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
-
-    if(isIntegerArg) {
-      condition = builder.create<NotEqOp>(
-          loc, y, zero);
-    } else {
-      mlir::Value epsilon = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 1E-4));
-      mlir::Value yAbs = builder.create<AbsOp>(
-          loc, RealType::get(builder.getContext()), y);
-      condition = builder.create<GteOp>(
-          loc, yAbs, epsilon);
-    }
-    
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
+  bool isIntegerArg = y.getType().isa<IntegerType>();
+  if(isIntegerArg) {
+    zero = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), 0));
+  } else {
+    zero = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 0.0f));
   }
+
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: taking the remainder of a division by 0\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+
+  if(isIntegerArg) {
+    condition = builder.create<NotEqOp>(
+        loc, y, zero);
+  } else {
+    mlir::Value epsilon = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 1E-4));
+    mlir::Value yAbs = builder.create<AbsOp>(
+        loc, RealType::get(builder.getContext()), y);
+    condition = builder.create<GteOp>(
+        loc, yAbs, epsilon);
+  }
+  
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -7569,45 +7572,45 @@ mlir::OpFoldResult RemOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-  void RemOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value y = getY();
-    mlir::Value zero;
-    mlir::Value condition;
+void RemOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value y = getY();
+  mlir::Value zero;
+  mlir::Value condition;
 
-    bool isIntegerArg = y.getType().isa<IntegerType>();
-    if(isIntegerArg) {
-      zero = builder.create<ConstantOp>(
-          loc, IntegerAttr::get(builder.getContext(), 0));
-    } else {
-      zero = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 0.0f));
-    }
-
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: taking the remainder of a division by 0\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
-
-    if(isIntegerArg) {
-      condition = builder.create<NotEqOp>(
-          loc, y, zero);
-    } else {
-      mlir::Value epsilon = builder.create<ConstantOp>(
-          loc, RealAttr::get(builder.getContext(), 1E-4));
-      mlir::Value yAbs = builder.create<AbsOp>(
-          loc, RealType::get(builder.getContext()), y);
-      condition = builder.create<GteOp>(
-          loc, yAbs, epsilon);
-    }
-    
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
+  bool isIntegerArg = y.getType().isa<IntegerType>();
+  if(isIntegerArg) {
+    zero = builder.create<ConstantOp>(
+        loc, IntegerAttr::get(builder.getContext(), 0));
+  } else {
+    zero = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 0.0f));
   }
+
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: taking the remainder of a division by 0\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+
+  if(isIntegerArg) {
+    condition = builder.create<NotEqOp>(
+        loc, y, zero);
+  } else {
+    mlir::Value epsilon = builder.create<ConstantOp>(
+        loc, RealAttr::get(builder.getContext(), 1E-4));
+    mlir::Value yAbs = builder.create<AbsOp>(
+        loc, RealType::get(builder.getContext()), y);
+    condition = builder.create<GteOp>(
+        loc, yAbs, epsilon);
+  }
+  
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -7795,39 +7798,39 @@ void SizeOp::print(mlir::OpAsmPrinter &printer) {
   printer << " -> " << getResult().getType();
 }
 
-  void SizeOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value dim = getDimension();
-    auto arrayShapedType = getArray().getType().dyn_cast<mlir::ShapedType>();
-    int64_t rank = arrayShapedType.getRank();
+void SizeOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value dim = getDimension();
+  auto arrayShapedType = getArray().getType().dyn_cast<mlir::ShapedType>();
+  int64_t rank = arrayShapedType.getRank();
 
-    mlir::Value zero = builder.create<ConstantOp>(
-        loc, IntegerAttr::get(builder.getContext(), 0));
+  mlir::Value zero = builder.create<ConstantOp>(
+      loc, IntegerAttr::get(builder.getContext(), 0));
 
-    mlir::Value rankConst = builder.create<ConstantOp>(
-        loc, IntegerAttr::get(builder.getContext(), rank));
+  mlir::Value rankConst = builder.create<ConstantOp>(
+      loc, IntegerAttr::get(builder.getContext(), rank));
 
-    mlir::Value cond1 = builder.create<GteOp>(
-        loc, dim, zero);
+  mlir::Value cond1 = builder.create<GteOp>(
+      loc, dim, zero);
 
-    mlir::Value cond2 = builder.create<LtOp>(
-        loc, dim, rankConst);
+  mlir::Value cond2 = builder.create<LtOp>(
+      loc, dim, rankConst);
 
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: ndims out of bounds\n"),
-        builder.getI64IntegerAttr(2));
-            
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
-    
-    mlir::Value condition = builder.create<AndOp>(
-      loc, cond1, cond2);
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: ndims out of bounds\n"),
+      builder.getI64IntegerAttr(2));
+          
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
+  
+  mlir::Value condition = builder.create<AndOp>(
+    loc, cond1, cond2);
 
-    builder.create<YieldOp>(loc, condition);
-  }
+  builder.create<YieldOp>(loc, condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -7860,30 +7863,30 @@ mlir::OpFoldResult SqrtOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-  void SqrtOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value operand = getOperand(); 
-    mlir::Value argCast = builder.create<CastOp>(
-        loc, RealType::get(builder.getContext()), operand);
+void SqrtOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value operand = getOperand(); 
+  mlir::Value argCast = builder.create<CastOp>(
+      loc, RealType::get(builder.getContext()), operand);
 
-    mlir::Value zero = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), 0.0f));  
+  mlir::Value zero = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), 0.0f));  
 
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: Argument of sqrt outside the domain. It should be >= 0\n"),
-        builder.getI64IntegerAttr(2));
-    
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: Argument of sqrt outside the domain. It should be >= 0\n"),
+      builder.getI64IntegerAttr(2));
+  
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
 
-    mlir::Value condition = builder.create<GteOp>(
-        loc, argCast, zero);
-    
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
-  }
+  mlir::Value condition = builder.create<GteOp>(
+      loc, argCast, zero);
+  
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
@@ -7916,85 +7919,85 @@ mlir::OpFoldResult TanOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-  void TanOp::generateRuntimeVerification(
-      mlir::OpBuilder& builder, mlir::Location loc)
-  {
-    mlir::Value operand = getOperand();
-    mlir::Value operandAbs = builder.create<AbsOp>(
-        loc, RealType::get(builder.getContext()), operand);
+void TanOp::generateRuntimeVerification(
+    mlir::OpBuilder& builder, mlir::Location loc)
+{
+  mlir::Value operand = getOperand();
+  mlir::Value operandAbs = builder.create<AbsOp>(
+      loc, RealType::get(builder.getContext()), operand);
 
-    mlir::Value pi = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), M_PI));
+  mlir::Value pi = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), M_PI));
 
-    mlir::Value piHalf = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), M_PI/2));
+  mlir::Value piHalf = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), M_PI/2));
 
-    mlir::Value epsilon = builder.create<ConstantOp>(
-        loc, RealAttr::get(builder.getContext(), 1E-4));
+  mlir::Value epsilon = builder.create<ConstantOp>(
+      loc, RealAttr::get(builder.getContext(), 1E-4));
 
-    // Multiples of pi are also multiples of pi/2
-    // therefore a trivial check as (operand % pi/2)
-    // would consider 2pi, 3pi, ... as illegal.
-    // Therefore we need to consider illegal only values
-    // multiples of pi/2 but NOT of pi.
-    // For example:
-    // 2pi is multiple of both pi and pi/2 ==> ok
-    // 1.5pi is multiple of pi/2 but not of pi ==> illegal
+  // Multiples of pi are also multiples of pi/2
+  // therefore a trivial check as (operand % pi/2)
+  // would consider 2pi, 3pi, ... as illegal.
+  // Therefore we need to consider illegal only values
+  // multiples of pi/2 but NOT of pi.
+  // For example:
+  // 2pi is multiple of both pi and pi/2 ==> ok
+  // 1.5pi is multiple of pi/2 but not of pi ==> illegal
 
-    mlir::Value modPiHalf = builder.create<ModOp>(
-        loc, RealType::get(builder.getContext()), operandAbs, piHalf);
+  mlir::Value modPiHalf = builder.create<ModOp>(
+      loc, RealType::get(builder.getContext()), operandAbs, piHalf);
 
-    mlir::Value modPi = builder.create<ModOp>(
-        loc, RealType::get(builder.getContext()), operandAbs, pi);
+  mlir::Value modPi = builder.create<ModOp>(
+      loc, RealType::get(builder.getContext()), operandAbs, pi);
 
-    // Remainder is not close to zero
-    // (accounts for when the argument is approaching pi from
-    // greater values)
-    mlir::Value isMulPiHigher = builder.create<LteOp>(
-        loc, modPi, epsilon);
-    
-    // Remainder is not close to pi
-    // (accounts for when the argument is approaching pi from
-    // lower values)
-    mlir::Value diff = builder.create<SubOp>(
-        loc, modPi, pi);
-    mlir::Value diffAbs = builder.create<AbsOp>(
-        loc, RealType::get(builder.getContext()), diff);
-    mlir::Value isMulPiLower = builder.create<LteOp>(
-        loc, diffAbs, epsilon);
+  // Remainder is not close to zero
+  // (accounts for when the argument is approaching pi from
+  // greater values)
+  mlir::Value isMulPiHigher = builder.create<LteOp>(
+      loc, modPi, epsilon);
+  
+  // Remainder is not close to pi
+  // (accounts for when the argument is approaching pi from
+  // lower values)
+  mlir::Value diff = builder.create<SubOp>(
+      loc, modPi, pi);
+  mlir::Value diffAbs = builder.create<AbsOp>(
+      loc, RealType::get(builder.getContext()), diff);
+  mlir::Value isMulPiLower = builder.create<LteOp>(
+      loc, diffAbs, epsilon);
 
-    mlir::Value isMulPi = builder.create<OrOp>(
-        loc, isMulPiLower, isMulPiHigher);
+  mlir::Value isMulPi = builder.create<OrOp>(
+      loc, isMulPiLower, isMulPiHigher);
 
-    // Same thing for pi/2
+  // Same thing for pi/2
 
-    mlir::Value isNotMulPiHalfHigher = builder.create<GteOp>(
-        loc, modPiHalf, epsilon);
+  mlir::Value isNotMulPiHalfHigher = builder.create<GteOp>(
+      loc, modPiHalf, epsilon);
 
-    diff = builder.create<SubOp>(
-        loc, modPiHalf, piHalf);
-    diffAbs = builder.create<AbsOp>(
-        loc, RealType::get(builder.getContext()), diff);
-    mlir::Value isNotMulPiHalfLower = builder.create<GteOp>(
-        loc, diffAbs, epsilon);
+  diff = builder.create<SubOp>(
+      loc, modPiHalf, piHalf);
+  diffAbs = builder.create<AbsOp>(
+      loc, RealType::get(builder.getContext()), diff);
+  mlir::Value isNotMulPiHalfLower = builder.create<GteOp>(
+      loc, diffAbs, epsilon);
 
-    mlir::Value isNotMulPiHalf = builder.create<AndOp>(
-        loc, isNotMulPiHalfLower, isNotMulPiHalfHigher);
+  mlir::Value isNotMulPiHalf = builder.create<AndOp>(
+      loc, isNotMulPiHalfLower, isNotMulPiHalfHigher);
 
-    auto assertOp = builder.create<AssertOp>(
-        loc,
-        builder.getStringAttr(
-          "Model error: Argument of tan is invalid. It should not be multiple of pi/2\n"),
-        builder.getI64IntegerAttr(2));
+  auto assertOp = builder.create<AssertOp>(
+      loc,
+      builder.getStringAttr(
+        "Model error: Argument of tan is invalid. It should not be multiple of pi/2\n"),
+      builder.getI64IntegerAttr(2));
 
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.createBlock(&assertOp.getConditionRegion());
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  builder.createBlock(&assertOp.getConditionRegion());
 
-    mlir::Value condition = builder.create<OrOp>(
-        loc, isMulPi, isNotMulPiHalf);
+  mlir::Value condition = builder.create<OrOp>(
+      loc, isMulPi, isNotMulPiHalf);
 
-    builder.create<YieldOp>(assertOp.getLoc(), condition);
-  }
+  builder.create<YieldOp>(assertOp.getLoc(), condition);
+}
 } // namespace mlir::bmodelica
 
 //===---------------------------------------------------------------------===//
