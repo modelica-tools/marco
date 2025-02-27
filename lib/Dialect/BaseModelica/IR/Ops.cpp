@@ -4996,7 +4996,7 @@ void DivOp::generateRuntimeVerification(
     mlir::OpBuilder &builder, mlir::Location loc) {
   mlir::Value rhs = getRhs();
   verifyArgumentIsNotZero(builder, loc, rhs,
-      "Model error: division by 0");
+      "Model error: division by zero");
 }
 } // namespace mlir::bmodelica
 
@@ -7701,7 +7701,7 @@ void TanOp::generateRuntimeVerification(
   auto assertOp = builder.create<AssertOp>(
       loc,
       builder.getStringAttr(
-        "Model error: Argument of tan is invalid. It should not be multiple of pi/2"),
+        "Model error: Argument of tan is invalid. It should not be a multiple of pi/2"),
       builder.getI64IntegerAttr(2));
 
   mlir::OpBuilder::InsertionGuard guard(builder);
