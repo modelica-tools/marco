@@ -790,7 +790,6 @@ void CodeGenAction::setMLIRModuleDataLayout() {
       mlir::PassManager& pm)
   {
     CompilerInstance& ci = getInstance();
-    pm.enableCrashReproducerGeneration("/root/input/repr.mlir", false);
 
   if (!ci.getCodeGenOptions().debug) {
     // Remove the debug information if a non-debuggable executable has been
